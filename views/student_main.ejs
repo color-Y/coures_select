@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{学生主界面}</title>
+    <style>
+        body {
+            display: flex;
+            font-family: Arial, sans-serif;
+        }
+        .sidebar {
+            width: 200px;
+            background-color: #f4f4f4;
+            padding: 15px;
+        }
+        .content {
+            flex-grow: 1;
+            padding: 20px;
+        }
+        .menu-item {
+            margin: 10px 0;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+<div class="sidebar">
+    <h2>菜单</h2>
+    <div class="menu-item"><a href="/student_main">主页</a></div>
+    <div class="menu-item"><a href="#" id="enroll-link">选课</a></div>
+</div>
+<div class="content">
+    <h1>欢迎来到学生主界面</h1>
+
+    <div id="enroll-section" class="hidden">
+        <h2>可选课程</h2>
+        <p>课程数量: {{courses.length}}</p>
+        <form action="/enroll" method="POST">
+            <ul>
+                {{#each courses}}
+                <li>
+                    <label>
+                        <% courses.forEach(function (item){ %>
+                            <p><input type="checkbox" name="courseId" value="{{this.ID}}">
+                            课程名称：<%= item.course_name %>
+                            课程代码：<%= item.course_code %>
+                            学分：<%= item.credits %><p>
+                        <% }) %>
+
+                        {{this.course_name}} (课程代码: {{this.course_code}}) - 学分: {{this.credits}}, 学期: {{this.semester}}, 教师ID: {{this.teacher_id_c}}, 学院ID: {{this.department_id_c}}, 上课时间: {{this.class_time}}
+                    </label>
+                </li>
+                {{else}}
+                <li>没有可选课程。</li>
+                {{/each}}
+            </ul>
+            <button type="submit">选课</button>
+        </form>
+    </div>
+</div>
+<script>
+    document.getElementById('enroll-link').onclick = function() {
+        const enrollSection = document.getElementById('enroll-section');
+        enrollSection.classList.toggle('hidden');
+    };
+</script>
+</body>
+</html>
