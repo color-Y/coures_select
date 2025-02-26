@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{学生主界面}</title>
+    <title>学生主界面</title>
+    <link rel="stylesheet" type="text/css" href="public/bootstrap.min.css">
     <style>
         body {
             display: flex;
@@ -34,29 +35,44 @@
 </div>
 <div class="content">
     <h1>欢迎来到学生主界面</h1>
-
     <div id="enroll-section" class="hidden">
         <h2>可选课程</h2>
-        <p>课程数量: {{courses.length}}</p>
+        <p>课程数量: <%= courses.length %></p>
         <form action="/enroll" method="POST">
-            <ul>
-                {{#each courses}}
-                <li>
-                    <label>
-                        <% courses.forEach(function (item){ %>
-                            <p><input type="checkbox" name="courseId" value="{{this.ID}}">
-                            课程名称：<%= item.course_name %>
-                            课程代码：<%= item.course_code %>
-                            学分：<%= item.credits %><p>
-                        <% }) %>
-
-                        {{this.course_name}} (课程代码: {{this.course_code}}) - 学分: {{this.credits}}, 学期: {{this.semester}}, 教师ID: {{this.teacher_id_c}}, 学院ID: {{this.department_id_c}}, 上课时间: {{this.class_time}}
-                    </label>
-                </li>
-                {{else}}
-                <li>没有可选课程。</li>
-                {{/each}}
-            </ul>
+            <div class="menu-item">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>课程名称</th>
+                        <th>学分</th>
+                        <th>学期</th>
+                        <th>教师ID</th>
+                        <th>学院ID</th>
+                        <th>上课时间</th>
+                        <th>选择</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <% if (courses.length > 0) { %>
+                        <% courses.forEach(function (item) { %>
+                            <tr>
+                                <td><%= item.course_name %></td>
+                                <td><%= item.credits %></td>
+                                <td><%= item.semester %></td>
+                                <td><%= item.teacher_id_c %></td>
+                                <td><%= item.department_id_c %></td>
+                                <td><%= item.class_time %></td>
+                                <td><input type="checkbox" name="courseId" value="<%= item.ID %>"></td>
+                            </tr>
+                        <% }); %>
+                    <% } else { %>
+                        <tr>
+                            <td colspan="7">没有可选课程。</td>
+                        </tr>
+                    <% } %>
+                    </tbody>
+                </table>
+            </div>
             <button type="submit">选课</button>
         </form>
     </div>
