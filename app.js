@@ -56,25 +56,65 @@ app.post('/login/main', (req, res) => {
         }
     });
 });
-
-// 选课处理
 app.post('/enroll', (req, res) => {
     const userId = req.session.userId; // 获取用户 ID
-    const courseId = req.body.courseId;
+    let courseIds = req.body.courseId; // 获取课程 ID
 
     if (!userId) {
-        return res.status(403).send('未登录');
+        return res.status(403).json({ success: false, message: '未登录' });
     }
 
-    // 插入选课记录
-    db.query('INSERT INTO enrollment (student_id, course_id) VALUES (?, ?)', [userId, courseId], (err) => {
-        if (err) {
-            return res.send("选课失败，可能已经选过该课程");
+    // 如果只选择一个课程，转换为数组
+    if (!Array.isArray(courseIds)) {
+        courseIds = [courseIds]; // 将单个课程 ID 转换为数组
+    }
+
+    // 查询用户已选课程的 Promise
+    const getExistingEnrollments = () => {
+        return new Promise((resolve, reject) => {
+            db.query('SELECT course_id FROM enrollments WHERE student_id = ?', [userId], (err, results) => {
+                if (err) {
+                    return reject(err);
+                }
+                const existingEnrollments = results.map(row => row.course_id); // 提取已选课程 ID
+
+                // Debug output
+                console.log('已选课程 ID:', existingEnrollments); // 输出已选课程数组
+                resolve(existingEnrollments);
+            });
+        });
+    };
+
+    // 执行查询已选课程
+    getExistingEnrollments().then(existingEnrollments => {
+        const errors = []; // 用于存储错误信息
+
+        // 遍历每个 courseId 进行插入
+        courseIds.forEach(courseId => {
+            if (existingEnrollments.includes(courseId)) {
+                errors.push(`课程 ID ${courseId} 已经选过了`);
+            } else {
+                db.query('INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)', [userId, courseId], (err) => {
+                    if (err) {
+                        console.error('插入错误:', err);
+                        errors.push("选课失败，可能出现了其他错误");
+                    }
+                });
+            }
+        });
+
+        // 检查是否有错误，返回相应信息
+        if (errors.length > 0) {
+            return res.json({ success: false, message: errors.join(', ') });
         }
-        res.redirect('/student_main');
+
+        // 所有插入完成后返回成功信息
+        res.json({ success: true, message: '选课成功！' });
+    }).catch(err => {
+        console.error('查询错误:', err);
+        res.status(500).json({ success: false, message: '服务器错误' });
     });
 });
-
 // 首页
 app.get('/', (req, res) => {
     res.render('index', { title: '首页', username: '访客' });
