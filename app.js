@@ -11,137 +11,203 @@ app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-
 // 会话中间件配置
 app.use(session({
-    secret: 'your_secret_key', // 请替换为你的密钥
+    secret: 'your_secret_key',
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false } // 如果使用 HTTPS，请设置为 true
+    cookie: { secure: false }
 }));
-
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
 
 // 登录处理
 app.post('/login/main', (req, res) => {
-    var val = req.body;
-    var userName = val.userName;
-    var userPwd = val.userPwd;
+    const { userName, userPwd } = req.body;
 
     // 查询学生表
-    db.query('SELECT * FROM students WHERE username = ? AND password = ?', [userName, userPwd], function(err, studentResult) {
+    db.query('SELECT * FROM students WHERE username = ? AND password = ?', [userName, userPwd], (err, studentResult) => {
         if (err) {
-            throw err;
+            console.error('查询错误:', err);
+            return res.status(500).json({ success: false, message: '服务器错误' });
         } else if (studentResult.length > 0) {
-            // 找到学生，保存 student ID 到 session
-            req.session.userId = studentResult[0].ID; // 保存 studentId
-            req.session.userRole = 'student'; // 存储用户角色
-            return res.redirect('/student_main'); // 重定向到学生主页面
+            req.session.userId = studentResult[0].ID;
+            req.session.userRole = 'student';
+            return res.redirect('/student_main');
         } else {
             // 查询教师表
-            db.query('SELECT * FROM teachers WHERE username = ? AND password = ?', [userName, userPwd], function(err, teacherResult) {
+            db.query('SELECT * FROM teachers WHERE username = ? AND password = ?', [userName, userPwd], (err, teacherResult) => {
                 if (err) {
-                    throw err;
+                    console.error('查询错误:', err);
+                    return res.status(500).json({ success: false, message: '服务器错误' });
                 } else if (teacherResult.length > 0) {
-                    // 找到教师，保存 teacher ID 到 session
-                    req.session.userId = teacherResult[0].ID; // 保存 teacherId
-                    req.session.userRole = 'teacher'; // 存储用户角色
-                    return res.redirect('/teacher_main'); // 重定向到教师主页面
+                    req.session.userId = teacherResult[0].ID;
+                    req.session.userRole = 'teacher';
+                    return res.redirect('/teacher_main');
                 } else {
-                    // 用户名或密码错误
-                    return res.send("用户名或密码错误");
+                    return res.status(403).json({ success: false, message: '用户名或密码错误' });
                 }
             });
         }
     });
 });
+
+// 选课处理
 app.post('/enroll', (req, res) => {
-    const userId = req.session.userId; // 获取用户 ID
-    let courseIds = req.body.courseId; // 获取课程 ID
+    const userId = req.session.userId;
+    let courseIds = req.body.courseId;
 
     if (!userId) {
         return res.status(403).json({ success: false, message: '未登录' });
     }
 
-    // 如果只选择一个课程，转换为数组
+    // 输出请求体，调试用
+    console.log('请求体:', req.body);
+
+    // 确保 courseIds 是数组
     if (!Array.isArray(courseIds)) {
-        courseIds = [courseIds]; // 将单个课程 ID 转换为数组
+        courseIds = [courseIds]; // 如果只有一个课程，转换为数组
     }
 
-    // 查询用户已选课程的 Promise
-    const getExistingEnrollments = () => {
-        return new Promise((resolve, reject) => {
-            db.query('SELECT course_id FROM enrollments WHERE student_id = ?', [userId], (err, results) => {
-                if (err) {
-                    return reject(err);
-                }
-                const existingEnrollments = results.map(row => row.course_id); // 提取已选课程 ID
+    // 查询已选课程
+    db.query('SELECT course_id FROM enrollments WHERE student_id = ?', [userId], (err, results) => {
+        if (err) {
+            console.error('查询错误:', err);
+            return res.status(500).json({ success: false, message: '服务器错误' });
+        }
 
-                // Debug output
-                console.log('已选课程 ID:', existingEnrollments); // 输出已选课程数组
-                resolve(existingEnrollments);
-            });
-        });
-    };
+        const existingEnrollments = results.map(row => Number(row.course_id));
+        const errors = [];
+        const insertPromises = [];
 
-    // 执行查询已选课程
-    getExistingEnrollments().then(existingEnrollments => {
-        const errors = []; // 用于存储错误信息
-
-        // 遍历每个 courseId 进行插入
+        // 检查是否已选
         courseIds.forEach(courseId => {
-            if (existingEnrollments.includes(courseId)) {
-                errors.push(`课程 ID ${courseId} 已经选过了`);
+            // 检查 courseId 是否有效
+            if (courseId === undefined || courseId === null) {
+                errors.push('课程 ID 不能为空');
+                return; // 跳过无效的 ID
+            }
+
+            const numericCourseId = Number(courseId);
+            if (isNaN(numericCourseId)) {
+                errors.push(`课程 ID ${courseId} 不是有效的数字`);
+                return; // 跳过无效的 ID
+            }
+
+            if (existingEnrollments.includes(numericCourseId)) {
+                errors.push(`课程 ID ${numericCourseId} 已经选过了`);
             } else {
-                db.query('INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)', [userId, courseId], (err) => {
-                    if (err) {
-                        console.error('插入错误:', err);
-                        errors.push("选课失败，可能出现了其他错误");
-                    }
+                const insertPromise = new Promise((resolve, reject) => {
+                    db.query('INSERT INTO enrollments (student_id, course_id) VALUES (?, ?)', [userId, numericCourseId], (err) => {
+                        if (err) {
+                            console.error(`插入错误: ${err.message}`);
+                            errors.push(`选课失败，课程 ID ${numericCourseId} 可能出现了其他错误: ${err.message}`);
+                            reject(err);
+                        } else {
+                            resolve();
+                        }
+                    });
                 });
+                insertPromises.push(insertPromise);
             }
         });
 
-        // 检查是否有错误，返回相应信息
-        if (errors.length > 0) {
-            return res.json({ success: false, message: errors.join(', ') });
-        }
-
-        // 所有插入完成后返回成功信息
-        res.json({ success: true, message: '选课成功！' });
-    }).catch(err => {
-        console.error('查询错误:', err);
-        res.status(500).json({ success: false, message: '服务器错误' });
+        // 处理插入操作
+        Promise.all(insertPromises)
+            .then(() => {
+                if (errors.length > 0) {
+                    return res.json({ success: false, message: errors.join(', ') });
+                }
+                res.json({ success: true, message: '选课成功！' });
+            })
+            .catch(() => {
+                res.json({ success: false, message: errors.join(', ') });
+            });
     });
 });
-// 首页
-app.get('/', (req, res) => {
-    res.render('index', { title: '首页', username: '访客' });
+
+// 获取我的课程
+app.get('/my_courses', (req, res) => {
+    const userId = req.session.userId;
+
+    if (!userId) {
+        return res.status(403).json({ success: false, message: '未登录' });
+    }
+
+    const query = `
+        SELECT c.ID, c.course_name, c.class_time, c.day_of_week, t.name AS teacher_name
+        FROM enrollments e
+                 JOIN courses c ON e.course_id = c.ID
+                 JOIN teachers t ON c.teacher_id_c = t.ID
+        WHERE e.student_id = ?
+    `;
+    db.query(query, [userId], (err, results) => {
+        if (err) {
+            console.error('查询错误:', err);
+            return res.status(500).json({ success: false, message: '服务器错误' });
+        }
+        res.json(results);
+    });
 });
 
-// 学生主页面
+// 删除课程
+app.delete('/delete_course', (req, res) => {
+    const userId = req.session.userId;
+    const courseId = req.query.courseId;
+
+    if (!userId) {
+        return res.status(403).json({ success: false, message: '未登录' });
+    }
+
+    const query = 'DELETE FROM enrollments WHERE student_id = ? AND course_id = ?';
+    db.query(query, [userId, courseId], (err) => {
+        if (err) {
+            console.error('删除错误:', err);
+            return res.status(500).json({ success: false, message: '服务器错误' });
+        }
+        res.json({ success: true, message: '课程删除成功' });
+    });
+});
+
+// 学生主页
 app.get('/student_main', (req, res) => {
     const userId = req.session.userId;
+    const keyword = req.query.keyword || '';
 
     if (!userId) {
         return res.status(403).send('未登录');
     }
 
-    db.query('SELECT * FROM courses', (err, courses) => {
+    let query = 'SELECT * FROM courses';
+    let queryParams = [];
+
+    if (keyword) {
+        query += ' WHERE course_name LIKE ?';
+        queryParams.push(`%${keyword}%`);
+    }
+
+    db.query(query, queryParams, (err, courses) => {
         if (err) {
             console.error('查询错误:', err);
             return res.status(500).send('服务器错误');
         }
 
-        // 在这里打印课程数据
-        console.log('课程数据:', JSON.stringify(courses, null, 2)); // 调试输出课程数据
+        db.query('SELECT course_id FROM enrollments WHERE student_id = ?', [userId], (err, enrollments) => {
+            if (err) {
+                console.error('查询错误:', err);
+                return res.status(500).send('服务器错误');
+            }
 
-        res.render('student_main', {courses: courses });
+            const enrolledCourseIds = enrollments.map(row => Number(row.course_id));
+            const coursesWithEnrollmentStatus = courses.map(course => ({
+                ...course,
+                enrolled: enrolledCourseIds.includes(course.ID)
+            }));
+
+            res.render('student_main', { courses: coursesWithEnrollmentStatus, keyword });
+        });
     });
 });
 
-// 教师主页面
+// 教师主页
 app.get('/teacher_main', (req, res) => {
     const userId = req.session.userId;
 
@@ -149,8 +215,12 @@ app.get('/teacher_main', (req, res) => {
         return res.status(403).send('未登录');
     }
 
-    // 获取教师相关数据
     res.render('teacher_main', { title: '教师主界面' });
+});
+
+// 首页
+app.get('/', (req, res) => {
+    res.render('index', { title: '首页', username: '访客' });
 });
 
 const PORT = process.env.PORT || 3000;
