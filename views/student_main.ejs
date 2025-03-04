@@ -25,6 +25,30 @@
         .hidden {
             display: none;
         }
+        table {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        .course-cell {
+            position: relative;
+        }
+        .delete-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 2px 5px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -32,15 +56,28 @@
     <h2>菜单</h2>
     <div class="menu-item"><a href="/student_main">主页</a></div>
     <div class="menu-item"><a href="#" id="enroll-link">选课</a></div>
+    <div class="menu-item"><a href="#" id="my-courses-link">我的课程</a></div>
 </div>
 <div class="content">
     <h1>欢迎来到学生主界面</h1>
+
+    <!-- 首页内容 -->
+    <div id="home-section">
+        <h2>首页内容</h2>
+        <p>这里是一些首页的内容，欢迎您！</p>
+    </div>
+
+    <!-- 选课部分，初始状态为隐藏 -->
     <div id="enroll-section" class="hidden">
         <h2>可选课程</h2>
+        <form method="GET" action="/student_main">
+            <input type="text" name="keyword" placeholder="输入课程名称或关键字">
+            <button type="submit">搜索</button>
+        </form>
         <p>课程数量: <%= courses.length %></p>
-        <form action="/enroll" method="POST">
+        <form id="enroll-form" action="/enroll" method="POST">
             <div class="menu-item">
-                <table>
+                <table class="table table-bordered">
                     <thead>
                     <tr>
                         <th>课程名称</th>
@@ -62,7 +99,11 @@
                                 <td><%= item.teacher_id_c %></td>
                                 <td><%= item.department_id_c %></td>
                                 <td><%= item.class_time %></td>
-                                <td><input type="checkbox" name="courseId" value="<%= item.ID %>"></td>
+                                <td>
+                                    <input type="checkbox" name="courseId" value="<%= item.ID %>"
+                                            <%= item.enrolled ? 'disabled' : '' %>>
+                                    <%= item.enrolled ? '已选' : '' %>
+                                </td>
                             </tr>
                         <% }); %>
                     <% } else { %>
@@ -75,12 +116,153 @@
             </div>
             <button type="submit">选课</button>
         </form>
+        <div id="message" class="mt-3"></div>
+    </div>
+
+    <div id="my-courses-section" class="hidden">
+        <h2>我的课程</h2>
+        <div id="course-table"></div>
     </div>
 </div>
 <script>
-    document.getElementById('enroll-link').onclick = function() {
-        const enrollSection = document.getElementById('enroll-section');
-        enrollSection.classList.toggle('hidden');
+    // 显示/隐藏选课部分
+    document.getElementById('enroll-link').onclick = function(event) {
+        event.preventDefault();
+        document.getElementById('enroll-section').classList.toggle('hidden');
+        document.getElementById('home-section').classList.add('hidden');
+        document.getElementById('my-courses-section').classList.add('hidden');
+    };
+
+    // 显示/隐藏我的课程部分
+    document.getElementById('my-courses-link').onclick = async function(event) {
+        event.preventDefault();
+        document.getElementById('home-section').classList.add('hidden');
+        document.getElementById('enroll-section').classList.add('hidden');
+        document.getElementById('my-courses-section').classList.remove('hidden');
+
+        try {
+            const response = await fetch('/my_courses');
+            const courses = await response.json();
+            const courseTable = document.getElementById('course-table');
+            courseTable.innerHTML = '';
+
+            if (courses.length > 0) {
+                const table = document.createElement('table');
+                table.className = 'table table-bordered';
+
+                // 表头
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                ['时间', '星期一', '星期二', '星期三', '星期四', '星期五'].forEach(day => {
+                    const th = document.createElement('th');
+                    th.textContent = day;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+
+                // 表格内容
+                const tbody = document.createElement('tbody');
+                const timeSlots = ['08:00 - 10:00', '10:00 - 12:00', '14:00 - 16:00', '16:00 - 18:00'];
+
+                timeSlots.forEach(time => {
+                    const row = document.createElement('tr');
+                    const timeCell = document.createElement('td');
+                    timeCell.textContent = time;
+                    row.appendChild(timeCell);
+
+                    for (let i = 0; i < 5; i++) {
+                        const cell = document.createElement('td');
+                        cell.textContent = '-';
+                        row.appendChild(cell);
+                    }
+
+                    tbody.appendChild(row);
+                });
+
+                // 填充课程数据
+                courses.forEach(course => {
+                    const timeIndex = timeSlots.indexOf(course.class_time);
+                    if (timeIndex !== -1) {
+                        const dayIndex = course.day_of_week - 1; // 假设 day_of_week 是 1-5
+                        const row = tbody.children[timeIndex];
+                        const cell = row.children[dayIndex + 1]; // +1 跳过时间列
+                        cell.textContent = `${course.course_name} (${course.teacher_name})`;
+                        cell.className = 'course-cell';
+
+                        // 添加删除按钮
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = '删除';
+                        deleteButton.className = 'delete-button';
+                        deleteButton.onclick = function() {
+                            deleteCourse(course.ID);
+                        };
+                        cell.appendChild(deleteButton);
+                    }
+                });
+
+                table.appendChild(tbody);
+                courseTable.appendChild(table);
+            } else {
+                courseTable.innerHTML = '<p>你还没有选课。</p>';
+            }
+        } catch (error) {
+            console.error('加载课程失败:', error);
+            courseTable.innerHTML = '<p>加载课程失败，请稍后重试。</p>';
+        }
+    };
+
+    // 删除课程
+    async function deleteCourse(courseId) {
+        if (confirm('确定要删除这门课程吗？')) {
+            try {
+                const response = await fetch(`/delete_course?courseId=${courseId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('课程删除成功！');
+                    // 重新加载我的课程
+                    document.getElementById('my-courses-link').click();
+                } else {
+                    alert('课程删除失败：' + result.message);
+                }
+            } catch (error) {
+                console.error('删除课程失败:', error);
+                alert('删除课程失败，请稍后重试。');
+            }
+        }
+    }
+
+    // 选课表单提交
+    document.getElementById('enroll-form').onsubmit = async function(event) {
+        event.preventDefault();
+        const formData = new FormData(event.target);
+        const button = event.target.querySelector('button[type="submit"]');
+        const messageDiv = document.getElementById('message');
+
+        button.disabled = true;
+        button.textContent = '提交中...';
+
+        try {
+            const response = await fetch('/enroll', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                messageDiv.innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+            } else {
+                messageDiv.innerHTML = `<div class="alert alert-danger">${result.message}</div>`;
+            }
+        } catch (error) {
+            messageDiv.innerHTML = `<div class="alert alert-danger">选课失败，请稍后重试。</div>`;
+        } finally {
+            button.disabled = false;
+            button.textContent = '选课';
+        }
     };
 </script>
 </body>
